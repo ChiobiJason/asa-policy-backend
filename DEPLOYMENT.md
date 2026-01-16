@@ -237,7 +237,7 @@ If you see errors about Rust/Cargo or "read-only file system":
 2. **Solution**: The `requirements.txt` already includes a pinned `cryptography` version with pre-built wheels
 3. **If still failing**: Try updating the Python version in Render settings:
    - Go to your service → **Settings** → **Environment**
-   - Set `PYTHON_VERSION=3.11` (instead of 3.13)
+   - Set `PYTHON_VERSION=3.11.9` (must include patch version, e.g., 3.11.9, not just 3.11)
    - Redeploy
 
 ### Build Fails (General)
@@ -245,7 +245,7 @@ If you see errors about Rust/Cargo or "read-only file system":
 1. Check build logs in Render dashboard
 2. Verify `requirements.txt` has all dependencies
 3. Ensure Python version is compatible (3.9+)
-4. Try pinning Python version to 3.11 in Render environment variables
+4. Try pinning Python version to 3.11.9 in Render environment variables (must include patch version)
 
 ### Application Crashes
 
