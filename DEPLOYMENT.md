@@ -229,11 +229,23 @@ Your Supabase database is already hosted separately, so no additional database s
 
 ## Troubleshooting
 
-### Build Fails
+### Build Fails with Rust/Cargo Errors
+
+If you see errors about Rust/Cargo or "read-only file system":
+
+1. **The issue**: Some packages (like `cryptography`) need to compile Rust code, which can fail on Render
+2. **Solution**: The `requirements.txt` already includes a pinned `cryptography` version with pre-built wheels
+3. **If still failing**: Try updating the Python version in Render settings:
+   - Go to your service → **Settings** → **Environment**
+   - Set `PYTHON_VERSION=3.11` (instead of 3.13)
+   - Redeploy
+
+### Build Fails (General)
 
 1. Check build logs in Render dashboard
 2. Verify `requirements.txt` has all dependencies
 3. Ensure Python version is compatible (3.9+)
+4. Try pinning Python version to 3.11 in Render environment variables
 
 ### Application Crashes
 
