@@ -30,7 +30,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import List, Optional
 from app.core.database import get_db, get_service_db
-from app.core.auth import require_admin
+from app.core.auth import require_admin, require_suggestion_manager
 from app.models.schemas import (
     BylawCreate, BylawUpdate, BylawResponse, PolicyStatus
 )
