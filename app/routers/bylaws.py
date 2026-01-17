@@ -214,11 +214,11 @@ async def create_bylaw(
     db: Client = Depends(get_service_db)  # Use service role for admin operations
 ) -> BylawResponse:
     """
-    Create a new bylaw (admin only)
+    Create a new bylaw (admin and policy_working_group)
     
     Args:
         bylaw: BylawCreate object containing bylaw data
-        current_user: Current authenticated admin user
+        current_user: Current authenticated user (admin or policy_working_group) 
         db: Supabase database client with service role
         
     Returns:
