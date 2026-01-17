@@ -210,7 +210,7 @@ async def get_bylaw(
 @router.post("/", response_model=BylawResponse, status_code=201)
 async def create_bylaw(
     bylaw: BylawCreate,
-    current_user: dict = Depends(require_admin),  # Require admin role
+    current_user: dict = Depends(require_suggestion_manager)),  # Admin or policy_working_group
     db: Client = Depends(get_service_db)  # Use service role for admin operations
 ) -> BylawResponse:
     """
