@@ -138,6 +138,11 @@ class SuggestionResponse(SuggestionBase):
     id: str
     created_at: datetime
     updated_at: Optional[datetime] = None
+    # Additional fields for display (populated from related policy/bylaw)
+    policy_id_text: Optional[str] = Field(None, description="Policy ID text (e.g., '1.1.1') if suggestion is for a policy")
+    policy_name: Optional[str] = Field(None, description="Policy name if suggestion is for a policy")
+    bylaw_number: Optional[int] = Field(None, description="Bylaw number if suggestion is for a bylaw")
+    bylaw_title: Optional[str] = Field(None, description="Bylaw title if suggestion is for a bylaw")
     
     class Config:
         from_attributes = True

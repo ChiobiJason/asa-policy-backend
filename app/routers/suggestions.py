@@ -34,17 +34,40 @@ from datetime import datetime
 router = APIRouter()
 
 
-def convert_suggestion_from_db(row: dict) -> dict:
-    """Convert database row to suggestion response format"""
-    return {
+def convert_suggestion_from_db(row: dict, policy_info: Optional[dict] = None, bylaw_info: Optional[dict] = None) -> dict:
+    """
+    Convert database row to suggestion response format
+    
+    Args:
+        row: Dictionary containing suggestion data from database
+        policy_info: Optional dictionary with policy information {policy_id, policy_name}
+        bylaw_info: Optional dictionary with bylaw information {bylaw_number, bylaw_title}
+    """
+    result = {
         "id": str(row.get("id")),
         "policy_id": row.get("policy_id"),
         "bylaw_id": row.get("bylaw_id"),
         "suggestion": row.get("suggestion", ""),
         "status": row.get("status", "pending"),
         "created_at": row.get("created_at"),
-        "updated_at": row.get("updated_at")
+        "updated_at": row.get("updated_at"),
+        "policy_id_text": None,
+        "policy_name": None,
+        "bylaw_number": None,
+        "bylaw_title": None
     }
+    
+    # Add policy information if available
+    if policy_info:
+        result["policy_id_text"] = policy_info.get("policy_id")
+        result["policy_name"] = policy_info.get("policy_name")
+    
+    # Add bylaw information if available
+    if bylaw_info:
+        result["bylaw_number"] = bylaw_info.get("bylaw_number")
+        result["bylaw_title"] = bylaw_info.get("bylaw_title")
+    
+    return result
 
 
 @router.get("/", response_model=List[SuggestionResponse])
@@ -98,7 +121,42 @@ async def get_suggestions(
         
         response = query.execute()
         
-        suggestions = [convert_suggestion_from_db(row) for row in response.data]
+        # Collect all unique policy and bylaw UUIDs from suggestions
+        policy_uuids = set()
+        bylaw_uuids = set()
+        for row in response.data:
+            if row.get("policy_id"):
+                policy_uuids.add(row.get("policy_id"))
+            if row.get("bylaw_id"):
+                bylaw_uuids.add(row.get("bylaw_id"))
+        
+        # Fetch policy information for all policy UUIDs
+        policy_map = {}
+        if policy_uuids:
+            policies_response = db.table(settings.POLICIES_TABLE).select("id, policy_id, name").in_("id", list(policy_uuids)).execute()
+            for policy in policies_response.data:
+                policy_map[policy.get("id")] = {
+                    "policy_id": policy.get("policy_id"),
+                    "policy_name": policy.get("name")
+                }
+        
+        # Fetch bylaw information for all bylaw UUIDs
+        bylaw_map = {}
+        if bylaw_uuids:
+            bylaws_response = db.table(settings.BYLAWS_TABLE).select("id, number, title").in_("id", list(bylaw_uuids)).execute()
+            for bylaw in bylaws_response.data:
+                bylaw_map[bylaw.get("id")] = {
+                    "bylaw_number": bylaw.get("number"),
+                    "bylaw_title": bylaw.get("title")
+                }
+        
+        # Convert suggestions with policy/bylaw information
+        suggestions = []
+        for row in response.data:
+            policy_info = policy_map.get(row.get("policy_id")) if row.get("policy_id") else None
+            bylaw_info = bylaw_map.get(row.get("bylaw_id")) if row.get("bylaw_id") else None
+            suggestions.append(convert_suggestion_from_db(row, policy_info, bylaw_info))
+        
         return suggestions
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching suggestions: {str(e)}")
