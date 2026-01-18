@@ -151,6 +151,18 @@ CREATE POLICY "Admin can manage policies"
         )
     );
 
+-- Policy Working Group RLS Policies
+-- Allow policy_working_group members to view all policies (draft and approved)
+CREATE POLICY "Policy working group can view all policies"
+    ON policies FOR SELECT
+    USING (
+        EXISTS (
+            SELECT 1 FROM users
+            WHERE users.id::text = current_setting('request.jwt.claims', true)::json->>'sub'
+            AND users.role = 'policy_working_group'
+        )
+    );
+
 -- Allow admin users to perform all operations on bylaws
 CREATE POLICY "Admin can manage bylaws"
     ON bylaws FOR ALL
