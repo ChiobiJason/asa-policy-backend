@@ -9,13 +9,14 @@
  *    convert_policy_from_db(row: dict) --> dict
  *        Converts a database row to policy response format
  *    get_policies(status: Optional[PolicyStatus], section: Optional[str], 
- *      search: Optional[str], limit: int, offset: int, db: Client) --> List[PolicyResponse]
- *        Gets all policies with optional filtering (admin only)
+ *      search: Optional[str], limit: int, offset: int, current_user: dict, 
+ *      db: Client) --> List[PolicyResponse]
+ *        Gets all policies with optional filtering (admin or policy_working_group only)
  *    get_approved_policies(section: Optional[str], search: Optional[str], 
  *      db: Client) --> List[PolicyResponse]
  *        Gets only approved policies (public access)
- *    get_policy(policy_id: str, db: Client) --> PolicyResponse
- *        Gets a single policy by ID
+ *    get_approved_policy_by_id(policy_id: str, db: Client) --> PolicyResponse
+ *        Gets a single approved policy by ID (public access, only approved policies)
  *    create_policy(policy: PolicyCreate, current_user: dict, db: Client) --> PolicyResponse
  *        Creates a new policy (admin only)
  *    update_policy(policy_id: str, policy_update: PolicyUpdate, 
@@ -77,26 +78,33 @@ async def get_policies(
     status: Optional[PolicyStatus] = Query(None, description="Filter by status"),
     section: Optional[str] = Query(None, description="Filter by section"),
     search: Optional[str] = Query(None, description="Search query"),
+    policy_id: Optional[str] = Query(None, description="Filter by specific policy_id (e.g., '1.1.1')"),
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0),
+    current_user: dict = Depends(require_suggestion_manager),  # Admin or policy_working_group only
     db: Client = Depends(get_db)
 ) -> List[PolicyResponse]:
     """
-    Get all policies with optional filtering (admin only)
+    Get all policies with optional filtering (admin or policy_working_group only)
+    
+    This endpoint is restricted to authenticated users with admin or policy_working_group roles.
+    Public users should use the /approved endpoint to view only approved policies.
     
     Args:
         status: Optional status filter (draft, approved, archived, under_review)
         section: Optional section filter (1, 2, or 3)
         search: Optional search query to filter by name, policy_id, or content
+        policy_id: Optional policy_id filter to get a specific policy by ID (e.g., "1.1.1")
         limit: Maximum number of results to return (1-100)
         offset: Number of results to skip for pagination
+        current_user: Current authenticated user (admin or policy_working_group)
         db: Supabase database client
         
     Returns:
         List[PolicyResponse]: List of policy objects matching the filters
         
     Raises:
-        HTTPException: 500 if database error occurs
+        HTTPException: 403 if user is not admin or policy_working_group, 500 if database error occurs
     """
     try:
         query = db.table(settings.POLICIES_TABLE).select("*")
@@ -106,6 +114,8 @@ async def get_policies(
             query = query.eq("status", status.value)
         if section:
             query = query.eq("section", section)
+        if policy_id:
+            query = query.eq("policy_id", policy_id)
         # Apply pagination
         query = query.range(offset, offset + limit - 1)
         
@@ -180,26 +190,30 @@ async def get_approved_policies(
 
 
 @router.get("/{policy_id}", response_model=PolicyResponse)
-async def get_policy(
+async def get_approved_policy_by_id(
     policy_id: str,
     db: Client = Depends(get_db)
 ) -> PolicyResponse:
     """
-    Get a single policy by policy_id (e.g., "1.1.1")
+    Get a single approved policy by policy_id (e.g., "1.1.1")
+    
+    This endpoint only returns approved policies. Public users can access this
+    endpoint to view approved policies. Non-approved policies will return 404.
     
     Args:
         policy_id: Policy identifier (e.g., "1.1.1"), not UUID
         db: Supabase database client
         
     Returns:
-        PolicyResponse: Policy object with all details
+        PolicyResponse: Approved policy object with all details
         
     Raises:
-        HTTPException: 404 if policy not found, 500 if database error occurs
+        HTTPException: 404 if policy not found or not approved, 500 if database error occurs
     """
     try:
         # Look up by policy_id (TEXT field like "1.1.1"), not UUID id
-        response = db.table(settings.POLICIES_TABLE).select("*").eq("policy_id", policy_id).execute()
+        # Only return approved policies
+        response = db.table(settings.POLICIES_TABLE).select("*").eq("policy_id", policy_id).eq("status", "approved").execute()
         
         if not response.data:
             raise HTTPException(status_code=404, detail="Policy not found")
