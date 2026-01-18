@@ -163,6 +163,28 @@ CREATE POLICY "Policy working group can view all policies"
         )
     );
 
+-- Allow policy_working_group members to insert policies
+CREATE POLICY "Policy working group can insert policies"
+    ON policies FOR INSERT
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM users
+            WHERE users.id::text = current_setting('request.jwt.claims', true)::json->>'sub'
+            AND users.role = 'policy_working_group'
+        )
+    );
+
+-- Allow policy_working_group members to update policies
+CREATE POLICY "Policy working group can update policies"
+    ON policies FOR UPDATE
+    USING (
+        EXISTS (
+            SELECT 1 FROM users
+            WHERE users.id::text = current_setting('request.jwt.claims', true)::json->>'sub'
+            AND users.role = 'policy_working_group'
+        )
+    );
+
 -- Allow admin users to perform all operations on bylaws
 CREATE POLICY "Admin can manage bylaws"
     ON bylaws FOR ALL
@@ -178,6 +200,28 @@ CREATE POLICY "Admin can manage bylaws"
 -- Allow policy_working_group members to view all bylaws (draft and approved)
 CREATE POLICY "Policy working group can view all bylaws"
     ON bylaws FOR SELECT
+    USING (
+        EXISTS (
+            SELECT 1 FROM users
+            WHERE users.id::text = current_setting('request.jwt.claims', true)::json->>'sub'
+            AND users.role = 'policy_working_group'
+        )
+    );
+
+-- Allow policy_working_group members to insert bylaws
+CREATE POLICY "Policy working group can insert bylaws"
+    ON bylaws FOR INSERT
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM users
+            WHERE users.id::text = current_setting('request.jwt.claims', true)::json->>'sub'
+            AND users.role = 'policy_working_group'
+        )
+    );
+
+-- Allow policy_working_group members to update bylaws
+CREATE POLICY "Policy working group can update bylaws"
+    ON bylaws FOR UPDATE
     USING (
         EXISTS (
             SELECT 1 FROM users

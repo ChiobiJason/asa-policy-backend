@@ -248,11 +248,12 @@ async def create_bylaw(
         if existing.data:
             raise HTTPException(status_code=400, detail="Bylaw number already exists")
         
+        # Always create bylaws as draft - only admin can approve via approve endpoint
         bylaw_data: dict = {
             "number": bylaw_number,  # Store as INTEGER in DB
             "title": bylaw.bylaw_title,  # Map bylaw_title to title
             "content": bylaw.bylaw_content,  # Map bylaw_content to content
-            "status": bylaw.status.value,
+            "status": "draft",  # Always create as draft
             "created_at": datetime.utcnow().isoformat(),
             "updated_at": datetime.utcnow().isoformat(),
             "created_by": current_user.get("id"),
@@ -275,20 +276,23 @@ async def create_bylaw(
 async def update_bylaw(
     bylaw_id: str,
     bylaw_update: BylawUpdate,
-    current_user: dict = Depends(require_admin),  # Require admin role
-    db: Client = Depends(get_service_db)  # Use service role for admin operations
+    current_user: dict = Depends(require_suggestion_manager),  # Admin or policy_working_group
+    db: Client = Depends(get_service_db)  # Use service role for operations
 ) -> BylawResponse:
     """
-    Update a bylaw (admin only)
+    Update a bylaw (admin or policy_working_group)
+    
+    Updated bylaws are automatically marked as "draft" status.
+    Only admins can approve bylaws using the approve endpoint.
     
     Args:
         bylaw_id: UUID of the bylaw to update
         bylaw_update: BylawUpdate object containing fields to update
-        current_user: Current authenticated admin user
+        current_user: Current authenticated user (admin or policy_working_group)
         db: Supabase database client with service role
         
     Returns:
-        BylawResponse: Updated bylaw object
+        BylawResponse: Updated bylaw object (status will be "draft")
         
     Raises:
         HTTPException: 404 if bylaw not found, 500 if update fails
@@ -307,8 +311,11 @@ async def update_bylaw(
             update_data["title"] = bylaw_update.bylaw_title  # Map bylaw_title to title
         if bylaw_update.bylaw_content is not None:
             update_data["content"] = bylaw_update.bylaw_content  # Map bylaw_content to content
-        if bylaw_update.status is not None:
-            update_data["status"] = bylaw_update.status.value
+        
+        # Always set status to DRAFT when bylaw is updated by policy_working_group or admin
+        # Only admin can approve bylaws via the approve endpoint
+        # This ensures that any update changes the bylaw back to draft
+        update_data["status"] = "draft"
         
         update_data["updated_at"] = datetime.utcnow().isoformat()
         update_data["updated_by"] = current_user.get("id")

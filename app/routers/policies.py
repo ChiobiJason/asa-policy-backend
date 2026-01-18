@@ -324,11 +324,11 @@ async def update_policy(
             update_data["section"] = policy_update.section
         if policy_update.policy_content is not None:
             update_data["content"] = policy_update.policy_content  # Map policy_content to content
-        # Always set status to DRAFT when policy is updated
+        
+        # Always set status to DRAFT when policy is updated by policy_working_group or admin
         # Only admin can approve policies via the approve endpoint
-        # If any content fields are being updated, force status to DRAFT
-        if policy_update.policy_name is not None or policy_update.policy_content is not None or policy_update.section is not None:
-            update_data["status"] = PolicyStatus.DRAFT.value
+        # This ensures that any update (even if just status) changes the policy back to draft
+        update_data["status"] = PolicyStatus.DRAFT.value
         
         # Only save version if something actually changed
         has_changes = (
