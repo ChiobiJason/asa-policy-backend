@@ -49,6 +49,12 @@ class LoginResponse(BaseModel):
     user: dict
 
 
+class DeleteUserResponse(BaseModel):
+    """Delete user response schema"""
+    message: str
+    deleted_user_id: str
+
+
 class RegisterRequest(BaseModel):
     """Registration request schema"""
     email: EmailStr
@@ -376,4 +382,66 @@ async def update_user_role(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error updating user role: {str(e)}"
+        )
+
+
+@router.delete("/users/{user_id}", status_code=200, response_model=DeleteUserResponse)
+async def delete_user(
+    user_id: str,
+    current_user: dict = Depends(get_current_user),
+    db: Client = Depends(get_service_db)  # Admin only
+) -> DeleteUserResponse:
+    """Delete a user (admin only)"""
+    # Check if current user is admin (not council or policy_working_group)
+    user_role = current_user.get("role", "public")
+    if user_role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied. Admin role required."
+        )
+    
+    # Prevent deleting yourself
+    if user_id == current_user.get("id"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You cannot delete your own account"
+        )
+    
+    try:
+        # Check if user exists
+        user_check = db.table(settings.USERS_TABLE).select("*").eq("id", user_id).execute()
+        if not user_check.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        
+        user_to_delete = user_check.data[0]
+        user_email = user_to_delete.get("email")
+        
+        # Delete from users table
+        db.table(settings.USERS_TABLE).delete().eq("id", user_id).execute()
+        
+        # Also delete from Supabase Auth (if possible)
+        try:
+            # Note: This requires admin privileges in Supabase
+            # The service role client should be able to do this
+            admin_auth = db.auth.admin
+            if hasattr(admin_auth, 'delete_user'):
+                admin_auth.delete_user(user_id)
+        except Exception as auth_error:
+            # If auth deletion fails, log but don't fail the request
+            # The user is already deleted from the users table
+            print(f"Warning: Could not delete user from auth: {auth_error}")
+        
+        return {
+            "message": f"User {user_email} has been deleted successfully",
+            "deleted_user_id": user_id
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error deleting user: {str(e)}"
         )
