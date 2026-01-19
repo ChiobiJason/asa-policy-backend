@@ -36,7 +36,8 @@ from typing import List, Optional
 from app.core.database import get_db, get_service_db
 from app.core.auth import require_admin, get_optional_user, require_suggestion_manager
 from app.models.schemas import (
-    PolicyCreate, PolicyUpdate, PolicyResponse, PolicyStatus, PolicySearchParams
+    PolicyCreate, PolicyUpdate, PolicyResponse, PolicyStatus, PolicySearchParams,
+    PolicyReviewCreate, PolicyReviewResponse, PolicyReviewsResponse, ReviewStatus
 )
 from app.core.config import settings
 from supabase import Client
@@ -550,3 +551,179 @@ async def get_policy_versions(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching policy versions: {str(e)}")
+
+
+@router.post("/{policy_id}/reviews", status_code=201)
+async def submit_policy_review(
+    policy_id: str,
+    review: PolicyReviewCreate,
+    current_user: dict = Depends(get_optional_user),
+    db: Client = Depends(get_service_db)
+) -> dict:
+    """
+    Submit a review for a policy
+    
+    Users can submit either "confirm" or "needs_work" review status.
+    Each user can only have one review per policy (updates if they submit again).
+    
+    Args:
+        policy_id: Policy identifier (e.g., "1.1.1"), not UUID
+        review: PolicyReviewCreate object containing review_status
+        current_user: Current authenticated user (optional, but email required)
+        db: Supabase database client
+        
+    Returns:
+        dict: Success message
+        
+    Raises:
+        HTTPException: 400 if invalid review status, 401 if not authenticated, 404 if policy not found
+    """
+    try:
+        # Check if user is authenticated
+        if not current_user:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        
+        # Get user email from current_user
+        user_email = current_user.get("email")
+        if not user_email:
+            # Try to get email from users table
+            user_id = current_user.get("id")
+            if user_id:
+                user_response = db.table(settings.USERS_TABLE).select("email").eq("id", user_id).execute()
+                if user_response.data:
+                    user_email = user_response.data[0].get("email")
+        
+        if not user_email:
+            raise HTTPException(status_code=400, detail="User email not found")
+        
+        # Verify policy exists
+        policy_check = db.table(settings.POLICIES_TABLE).select("id").eq("policy_id", policy_id).execute()
+        if not policy_check.data:
+            raise HTTPException(status_code=404, detail="Policy not found")
+        
+        # Check if review already exists for this user and policy
+        existing_review = db.table(settings.POLICY_REVIEWS_TABLE).select("*").eq("policy_id", policy_id).eq("user_email", user_email).execute()
+        
+        review_data = {
+            "policy_id": policy_id,
+            "user_email": user_email,
+            "review_status": review.review_status.value,
+            "updated_at": datetime.utcnow().isoformat()
+        }
+        
+        if existing_review.data:
+            # Update existing review
+            db.table(settings.POLICY_REVIEWS_TABLE).update(review_data).eq("policy_id", policy_id).eq("user_email", user_email).execute()
+        else:
+            # Create new review
+            review_data["created_at"] = datetime.utcnow().isoformat()
+            db.table(settings.POLICY_REVIEWS_TABLE).insert(review_data).execute()
+        
+        return {"message": "Review submitted successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error submitting review: {str(e)}")
+
+
+@router.get("/{policy_id}/reviews", response_model=PolicyReviewsResponse)
+async def get_policy_reviews(
+    policy_id: str,
+    current_user: dict = Depends(get_optional_user),
+    db: Client = Depends(get_db)
+) -> PolicyReviewsResponse:
+    """
+    Get all reviews for a policy
+    
+    Returns the count and list of emails for both "confirm" and "needs_work" reviews.
+    
+    Args:
+        policy_id: Policy identifier (e.g., "1.1.1"), not UUID
+        current_user: Current authenticated user (optional)
+        db: Supabase database client
+        
+    Returns:
+        PolicyReviewsResponse: Object containing confirmed and needs_work review data
+        
+    Raises:
+        HTTPException: 404 if policy not found, 500 if database error occurs
+    """
+    try:
+        # Verify policy exists
+        policy_check = db.table(settings.POLICIES_TABLE).select("id").eq("policy_id", policy_id).execute()
+        if not policy_check.data:
+            raise HTTPException(status_code=404, detail="Policy not found")
+        
+        # Get all reviews for this policy
+        reviews_response = db.table(settings.POLICY_REVIEWS_TABLE).select("*").eq("policy_id", policy_id).execute()
+        
+        # Separate reviews by status
+        confirmed_emails = []
+        needs_work_emails = []
+        
+        for review in reviews_response.data:
+            review_status = review.get("review_status")
+            user_email = review.get("user_email")
+            if review_status == ReviewStatus.CONFIRM.value:
+                confirmed_emails.append(user_email)
+            elif review_status == ReviewStatus.NEEDS_WORK.value:
+                needs_work_emails.append(user_email)
+        
+        return PolicyReviewsResponse(
+            confirmed=PolicyReviewResponse(
+                numberOfPeople=len(confirmed_emails),
+                people=confirmed_emails
+            ),
+            needs_work=PolicyReviewResponse(
+                numberOfPeople=len(needs_work_emails),
+                people=needs_work_emails
+            )
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching reviews: {str(e)}")
+
+
+@router.delete("/reviews/reset-all", status_code=200)
+async def reset_all_policy_reviews(
+    current_user: dict = Depends(require_admin),  # Only admin can reset all reviews
+    db: Client = Depends(get_service_db)  # Use service role for admin operations
+) -> dict:
+    """
+    Reset all reviews for all policies (admin only)
+    
+    Deletes all reviews (both confirmed and needs_work) for all policies.
+    This clears all email addresses and review counts across the entire system.
+    
+    Args:
+        current_user: Current authenticated admin user
+        db: Supabase database client with service role
+        
+    Returns:
+        dict: Success message with count of deleted reviews
+        
+    Raises:
+        HTTPException: 500 if deletion fails
+    """
+    try:
+        # Get count of all reviews before deletion
+        reviews_response = db.table(settings.POLICY_REVIEWS_TABLE).select("id").execute()
+        review_count = len(reviews_response.data) if reviews_response.data else 0
+        
+        # Delete all reviews from the table
+        # Using service role, we can delete all rows by selecting all and deleting
+        if review_count > 0:
+            # Get all review IDs and delete them
+            all_review_ids = [review.get("id") for review in reviews_response.data]
+            # Delete in batches if needed, or all at once
+            db.table(settings.POLICY_REVIEWS_TABLE).delete().in_("id", all_review_ids).execute()
+        
+        return {
+            "message": "All reviews for all policies have been reset",
+            "deleted_count": review_count
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error resetting reviews: {str(e)}")

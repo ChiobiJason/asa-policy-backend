@@ -189,3 +189,27 @@ class BylawSearchParams(BaseModel):
     status: Optional[PolicyStatus] = None
     limit: int = Field(default=50, ge=1, le=100)
     offset: int = Field(default=0, ge=0)
+
+
+# Policy Review Schemas
+class ReviewStatus(str, Enum):
+    """Review status enumeration"""
+    CONFIRM = "confirm"
+    NEEDS_WORK = "needs_work"
+
+
+class PolicyReviewCreate(BaseModel):
+    """Schema for creating a policy review"""
+    review_status: ReviewStatus = Field(..., description="Review status: 'confirm' or 'needs_work'")
+
+
+class PolicyReviewResponse(BaseModel):
+    """Schema for policy review response"""
+    numberOfPeople: int = Field(..., description="Number of people who submitted this review status")
+    people: List[str] = Field(..., description="List of email addresses of people who submitted this review status")
+
+
+class PolicyReviewsResponse(BaseModel):
+    """Schema for all policy reviews response"""
+    confirmed: PolicyReviewResponse = Field(..., description="Confirmed reviews")
+    needs_work: PolicyReviewResponse = Field(..., description="Needs work reviews")
