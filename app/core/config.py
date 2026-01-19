@@ -33,6 +33,7 @@ class Settings(BaseSettings):
         SUGGESTIONS_TABLE (str): Name of suggestions table in database
         USERS_TABLE (str): Name of users table in database
         POLICY_VERSIONS_TABLE (str): Name of policy versions table in database
+        POLICY_REVIEWS_TABLE (str): Name of policy reviews table in database
         CORS_ORIGINS (List[str]): List of allowed CORS origins
         JWT_SECRET (str): JWT secret key (if using custom JWT)
         JWT_ALGORITHM (str): JWT algorithm
@@ -52,6 +53,7 @@ class Settings(BaseSettings):
     SUGGESTIONS_TABLE: str = "suggestions"
     USERS_TABLE: str = "users"
     POLICY_VERSIONS_TABLE: str = "policy_versions"
+    POLICY_REVIEWS_TABLE: str = "policy_reviews"
     
     # CORS
     # Can be set as comma-separated string in environment variable
