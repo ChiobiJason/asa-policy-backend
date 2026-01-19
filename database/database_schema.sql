@@ -74,6 +74,17 @@ CREATE TABLE IF NOT EXISTS policy_versions (
     created_by TEXT
 );
 
+-- Policy Reviews Table (for tracking user reviews)
+CREATE TABLE IF NOT EXISTS policy_reviews (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    policy_id TEXT NOT NULL,  -- References policies.policy_id (TEXT), not UUID
+    user_email TEXT NOT NULL,  -- Email of the user who submitted the review
+    review_status TEXT NOT NULL CHECK (review_status IN ('confirm', 'needs_work')),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(policy_id, user_email)  -- One review per user per policy
+);
+
 -- Indexes for Policies
 CREATE INDEX IF NOT EXISTS idx_policies_status ON policies(status);
 CREATE INDEX IF NOT EXISTS idx_policies_section ON policies(section);
@@ -99,6 +110,11 @@ CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
 CREATE INDEX IF NOT EXISTS idx_policy_versions_policy_id ON policy_versions(policy_id);
 CREATE INDEX IF NOT EXISTS idx_policy_versions_version_number ON policy_versions(policy_id, version_number);
 
+-- Indexes for Policy Reviews
+CREATE INDEX IF NOT EXISTS idx_policy_reviews_policy_id ON policy_reviews(policy_id);
+CREATE INDEX IF NOT EXISTS idx_policy_reviews_user_email ON policy_reviews(user_email);
+CREATE INDEX IF NOT EXISTS idx_policy_reviews_status ON policy_reviews(review_status);
+
 -- Function to update updated_at timestamp
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
@@ -118,11 +134,15 @@ CREATE TRIGGER update_bylaws_updated_at BEFORE UPDATE ON bylaws
 CREATE TRIGGER update_suggestions_updated_at BEFORE UPDATE ON suggestions
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+CREATE TRIGGER update_policy_reviews_updated_at BEFORE UPDATE ON policy_reviews
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
 -- Row Level Security (RLS) Policies
 -- Enable RLS on tables
 ALTER TABLE policies ENABLE ROW LEVEL SECURITY;
 ALTER TABLE bylaws ENABLE ROW LEVEL SECURITY;
 ALTER TABLE suggestions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE policy_reviews ENABLE ROW LEVEL SECURITY;
 
 -- Policies: Public can view approved policies
 CREATE POLICY "Public can view approved policies"
@@ -238,6 +258,50 @@ CREATE POLICY "Admin and policy_working_group can manage suggestions"
             SELECT 1 FROM users
             WHERE users.id::text = current_setting('request.jwt.claims', true)::json->>'sub'
             AND users.role IN ('admin', 'policy_working_group')
+        )
+    );
+
+-- Policy Reviews RLS Policies
+-- Allow authenticated users to insert/update their own reviews
+CREATE POLICY "Users can submit their own reviews"
+    ON policy_reviews FOR INSERT
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM users
+            WHERE users.id::text = current_setting('request.jwt.claims', true)::json->>'sub'
+            AND users.email = policy_reviews.user_email
+        )
+    );
+
+CREATE POLICY "Users can update their own reviews"
+    ON policy_reviews FOR UPDATE
+    USING (
+        EXISTS (
+            SELECT 1 FROM users
+            WHERE users.id::text = current_setting('request.jwt.claims', true)::json->>'sub'
+            AND users.email = policy_reviews.user_email
+        )
+    );
+
+-- Allow authenticated users to view all reviews (for statistics)
+CREATE POLICY "Authenticated users can view all reviews"
+    ON policy_reviews FOR SELECT
+    USING (
+        EXISTS (
+            SELECT 1 FROM users
+            WHERE users.id::text = current_setting('request.jwt.claims', true)::json->>'sub'
+        )
+    );
+
+-- Allow admin to delete all reviews (for reset functionality)
+-- Note: Users cannot delete their own reviews - they can only update by submitting a new review
+CREATE POLICY "Admin can delete all reviews"
+    ON policy_reviews FOR DELETE
+    USING (
+        EXISTS (
+            SELECT 1 FROM users
+            WHERE users.id::text = current_setting('request.jwt.claims', true)::json->>'sub'
+            AND users.role = 'admin'
         )
     );
 
