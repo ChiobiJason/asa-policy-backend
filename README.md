@@ -2,8 +2,6 @@
 
 FastAPI backend for the Augustana Students' Association (ASA) Policy Management System with Supabase integration.
 
-> Created with the help of Cursor AI
-
 ## 🌐 Live Site
 
 **Live API**: [https://asa-policy-backend.onrender.com](https://asa-policy-backend.onrender.com)
