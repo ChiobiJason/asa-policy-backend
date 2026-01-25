@@ -4,6 +4,13 @@ FastAPI backend for the Augustana Students' Association (ASA) Policy Management 
 
 > Created with the help of Cursor AI
 
+## 🌐 Live Site
+
+**Live API**: [https://asa-policy-backend.onrender.com](https://asa-policy-backend.onrender.com)
+
+- **API Documentation**: https://asa-policy-backend.onrender.com/docs
+- **Health Check**: https://asa-policy-backend.onrender.com/api/health
+
 ## Features
 
 - **Policy Management**: Create, update, approve, and manage policies with version history
@@ -172,7 +179,9 @@ WHERE email = 'your-email@example.com';
 
 ## API Endpoints
 
-Once running, visit http://localhost:8000/docs for interactive API documentation with Swagger UI.
+**Live API Documentation**: [https://asa-policy-backend.onrender.com/docs](https://asa-policy-backend.onrender.com/docs)
+
+For local development, visit http://localhost:8000/docs for interactive API documentation with Swagger UI.
 
 ### Authentication (`/api/auth`)
 
